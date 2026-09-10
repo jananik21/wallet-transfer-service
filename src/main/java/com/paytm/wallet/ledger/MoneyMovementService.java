@@ -16,6 +16,14 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Reusable money-movement primitive.
+ * Idempotency claim + wallet locks + debit/credit happen in ONE database transaction.
+ *
+ * Lock order matters: wallets are locked BEFORE inserting the transfer row.
+ * Inserting first takes FOR KEY SHARE via FKs; upgrading to FOR UPDATE under
+ * concurrency can deadlock. Locking first avoids that.
+ */
 @Service
 public class MoneyMovementService {
 
@@ -49,8 +57,47 @@ public class MoneyMovementService {
         }
 
         String requestHash = RequestHasher.hashTransferRequest(fromWalletId, toWalletId, amountPaise);
-        UUID transferId = UUID.randomUUID();
 
+        // Fast path for replays: avoid locking wallets when the key already finalized.
+        var existingBefore = transferJdbcRepository.findByIdempotencyKey(idempotencyKey);
+        if (existingBefore.isPresent()) {
+            TransferRecord existing = existingBefore.get();
+            if (existing.status() == TransferStatus.PENDING) {
+                // Extremely unlikely to observe committed PENDING; treat as conflict with in-flight.
+                throw new IllegalStateException("Transfer still PENDING for key=" + idempotencyKey);
+            }
+            if (!existing.requestHash().equals(requestHash)) {
+                log.info("event=idempotency_conflict idempotencyKey={}", idempotencyKey);
+                throw new IdempotencyConflictException(
+                        "Idempotency key was reused with a different transfer request");
+            }
+            log.info("event=idempotent_replay transferId={} idempotencyKey={} status={}",
+                    existing.id(), idempotencyKey, existing.status());
+            domainMetrics.idempotentReplay();
+            return new MovementResult(existing, true);
+        }
+
+        List<WalletEntity> locked = walletJdbcRepository.lockByIdsForUpdateOrdered(fromWalletId, toWalletId);
+        if (locked.size() != 2) {
+            throw new NotFoundException("One or both wallets not found");
+        }
+
+        // Re-check after locks: a concurrent TX may have committed the same key while we waited.
+        existingBefore = transferJdbcRepository.findByIdempotencyKey(idempotencyKey);
+        if (existingBefore.isPresent()) {
+            TransferRecord existing = existingBefore.get();
+            if (!existing.requestHash().equals(requestHash)) {
+                log.info("event=idempotency_conflict idempotencyKey={}", idempotencyKey);
+                throw new IdempotencyConflictException(
+                        "Idempotency key was reused with a different transfer request");
+            }
+            log.info("event=idempotent_replay transferId={} idempotencyKey={} status={}",
+                    existing.id(), idempotencyKey, existing.status());
+            domainMetrics.idempotentReplay();
+            return new MovementResult(existing, true);
+        }
+
+        UUID transferId = UUID.randomUUID();
         boolean claimed = transferJdbcRepository.tryInsertPending(
                 transferId, fromWalletId, toWalletId, amountPaise, idempotencyKey, requestHash);
 
@@ -58,13 +105,11 @@ public class MoneyMovementService {
             TransferRecord existing = transferJdbcRepository.findByIdempotencyKey(idempotencyKey)
                     .orElseThrow(() -> new IllegalStateException(
                             "Idempotency conflict without visible row for key=" + idempotencyKey));
-
             if (!existing.requestHash().equals(requestHash)) {
                 log.info("event=idempotency_conflict idempotencyKey={}", idempotencyKey);
                 throw new IdempotencyConflictException(
                         "Idempotency key was reused with a different transfer request");
             }
-
             log.info("event=idempotent_replay transferId={} idempotencyKey={} status={}",
                     existing.id(), idempotencyKey, existing.status());
             domainMetrics.idempotentReplay();
@@ -73,11 +118,6 @@ public class MoneyMovementService {
 
         log.info("event=transfer_created transferId={} from={} to={} amountPaise={}",
                 transferId, fromWalletId, toWalletId, amountPaise);
-
-        List<WalletEntity> locked = walletJdbcRepository.lockByIdsForUpdateOrdered(fromWalletId, toWalletId);
-        if (locked.size() != 2) {
-            throw new NotFoundException("One or both wallets not found");
-        }
 
         int debited = walletJdbcRepository.conditionalDebit(fromWalletId, amountPaise);
         if (debited == 0) {

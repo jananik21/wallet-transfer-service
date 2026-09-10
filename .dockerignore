@@ -1,0 +1,10 @@
+# Build context exclusions
+target/
+.idea/
+.vscode/
+.git/
+*.iml
+.env
+.env.local
+*.log
+scripts/__pycache__/

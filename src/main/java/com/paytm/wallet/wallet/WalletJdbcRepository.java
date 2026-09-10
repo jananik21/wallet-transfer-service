@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -64,6 +65,49 @@ public class WalletJdbcRepository {
                 id
         );
         return results.stream().findFirst();
+    }
+
+    public List<WalletEntity> lockByIdsForUpdateOrdered(UUID walletA, UUID walletB) {
+        return jdbcTemplate.query(
+                """
+                SELECT id, user_id, balance_paise, created_at, updated_at
+                FROM wallets
+                WHERE id IN (?, ?)
+                ORDER BY id ASC
+                FOR UPDATE
+                """,
+                WALLET_MAPPER,
+                walletA,
+                walletB
+        );
+    }
+
+    public int conditionalDebit(UUID walletId, long amountPaise) {
+        return jdbcTemplate.update(
+                """
+                UPDATE wallets
+                SET balance_paise = balance_paise - ?,
+                    updated_at = now()
+                WHERE id = ?
+                  AND balance_paise >= ?
+                """,
+                amountPaise,
+                walletId,
+                amountPaise
+        );
+    }
+
+    public int credit(UUID walletId, long amountPaise) {
+        return jdbcTemplate.update(
+                """
+                UPDATE wallets
+                SET balance_paise = balance_paise + ?,
+                    updated_at = now()
+                WHERE id = ?
+                """,
+                amountPaise,
+                walletId
+        );
     }
 
     private static Instant toInstant(Timestamp timestamp) {

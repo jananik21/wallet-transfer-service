@@ -1,6 +1,6 @@
 # Design write-up — Wallet & P2P Transfer
 
-One-page reasoning for the Paytm R2 exercise.
+Design notes for this wallet and P2P transfer service.
 
 ## 1. Data model
 
@@ -68,19 +68,19 @@ This is a **money** workload: we choose **strong consistency** (row locks, trans
 
 ## 12. AI usage disclosure
 
-### AI DIRECTED
+### What I directed
 I owned the architectural decisions: single Spring Boot + PostgreSQL service; integer paise; race-free `INSERT … ON CONFLICT` for wallets; sorted `FOR UPDATE` + conditional debit; DB-unique idempotency in the same transaction as money movement; `PENDING` as in-TX claim only; Bearer token hash auth; Docker multi-stage/non-root; manual concurrency and edge-case verification scripts; consistency-over-availability trade-off.
 
 I used AI assistance for implementation boilerplate, wiring Spring/Flyway/Actuator, drafting scripts/docs, debugging (Flyway checksums, logback blank line, contention script key reuse, FK lock ordering), and review.
 
-### AI DECIDED (reviewed and accepted)
-- Spring Boot 3.3 / Java 21 baseline stack choices for a small interview service.
+### What AI suggested (I reviewed and accepted)
+- Spring Boot 3.3 / Java 21 baseline stack choices for a small service.
 - Logstash JSON encoder + Micrometer Prometheus as the default observability wiring.
 - Testcontainers-oriented integration test dependency setup for later Postgres-backed tests.
 - Concrete packaging details of the multi-stage Dockerfile (Temurin JRE Alpine, non-root user name).
 
-I can explain every important path in the final code (wallet get-or-create, transfer/idempotency transaction, burst scripts, Docker/health/metrics).
+I can explain every important path in the final code (wallet get-or-create, transfer/idempotency transaction, concurrency scripts, Docker/health/metrics).
 
 ## Free-tier cost note
 
-Target cost **₹0**: free-tier container host + free managed Postgres (e.g. Render/Railway/Fly.io/Neon style free plans). No paid add-ons required for the exercise scope.
+Target cost **₹0**: free-tier container host + free managed Postgres (e.g. Render/Railway/Fly.io/Neon style free plans). No paid add-ons required for this scope.

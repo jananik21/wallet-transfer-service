@@ -197,28 +197,43 @@ Multi-stage build, runs as non-root user `wallet`, `HEALTHCHECK` on `/actuator/h
 
 ## Manual verification scripts
 
+Bash scripts under [`scripts/`](scripts/) used while developing to check concurrency, money safety, idempotency, and API edge cases. They need a running app, Postgres access (`psql`), `curl`, and `python3`. Details: [`scripts/README.md`](scripts/README.md).
+
+| Script | What it checks |
+|---|---|
+| `run_concurrency_tests.sh` | Concurrent wallet get-or-create; same-key transfer storm; A↔B contention + overdrafts; conservation; no negatives; no HTTP 5xx |
+| `run_edge_case_tests.sh` | Happy-path transfer, insufficient funds, idempotent replay + key conflict, self-transfer, invalid amounts, missing wallet, auth failures |
+| `idempotency_persistence_part1.sh` / `part2.sh` | Transfer → restart app → replay same key (no second debit) → different body → `409` |
+
+Local (defaults: `http://127.0.0.1:8080`, local `wallet` DB):
+
 ```bash
-./scripts/run_concurrency_tests.sh
 ./scripts/run_edge_case_tests.sh
+./scripts/run_concurrency_tests.sh
 ```
 
-Idempotency across restart (two steps):
+Against a deployed API (set DB vars to the same Postgres the app uses; Neon needs `PGSSLMODE=require`):
+
+```bash
+export BASE_URL=https://wallet-transfer-service-production.up.railway.app
+export DB_HOST=...          # Postgres host
+export DB_PORT=5432
+export DB_NAME=...
+export DB_USER=...
+export DB_PASSWORD=...
+export PGSSLMODE=require    # if using Neon / managed SSL
+
+./scripts/run_edge_case_tests.sh
+./scripts/run_concurrency_tests.sh
+```
+
+Restart idempotency (two steps):
 
 ```bash
 ./scripts/idempotency_persistence_part1.sh
-# restart the app
+# restart the application
 ./scripts/idempotency_persistence_part2.sh
 ```
-
-Against a deployed URL:
-
-```bash
-BASE_URL=https://YOUR_PUBLIC_HOST ./scripts/run_concurrency_tests.sh
-```
-
-(DB checks in the scripts still need DB credentials/network access; set `DB_HOST` / `DB_PASSWORD` as needed.)
-
-See `scripts/README.md`.
 
 ## Deployment (free tier / ₹0)
 
@@ -232,12 +247,11 @@ Suggested path (no card required on common free tiers):
 4. Confirm `GET /actuator/health` publicly.
 5. Re-run the verification scripts with `BASE_URL=https://…`.
 
-Document your live URL, public repo, and a logs screenshot/recording in the submission.
 
 ## Design write-up
 
 See **[DESIGN.md](DESIGN.md)** for data model, alternatives rejected, idempotency placement, consistency vs availability, and AI usage disclosure.
 
-## License / scope
+## Scope
 
-Interview exercise — backend only, single Spring Boot service, no frontend, no microservices.
+Backend only — single Spring Boot service, no frontend, no microservices.

@@ -27,8 +27,10 @@ USER wallet
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:8080/actuator/health || exit 1
+# Railway (and others) inject PORT; Spring binds to ${PORT:8080}.
+# Healthcheck must use the same port or the container can flap / 502.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:${PORT:-8080}/actuator/health || exit 1
 
 ENV JAVA_OPTS=""
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

@@ -16,7 +16,7 @@ public final class RequestHasher {
         return sha256Hex(canonical);
     }
 
-    public static String sha256Hex(String value) {
+    private static String sha256Hex(String value) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));

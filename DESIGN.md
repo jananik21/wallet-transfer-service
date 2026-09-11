@@ -34,7 +34,7 @@ All of the above share **one database transaction** with the idempotency key ins
 
 ## 4. Why alternatives were rejected
 
-We wanted the **simplest mechanism that is still correct under the live probes**, and that is easy to defend in an interview. Sorted row locks + conditional debit meets that bar without SERIALIZABLE complexity.
+We wanted the **simplest mechanism that is still correct under concurrent load**, and that is easy to defend in an interview. Sorted row locks + conditional debit meets that bar without SERIALIZABLE complexity.
 
 We also lock wallets **before** inserting the transfer row. Inserting first takes FK `FOR KEY SHARE` on wallet rows; upgrading to `FOR UPDATE` under concurrency can deadlock. Lock-first avoids that.
 
@@ -69,7 +69,7 @@ This is a **money** workload: we choose **strong consistency** (row locks, trans
 ## 12. AI usage disclosure
 
 ### AI DIRECTED
-I owned the architectural decisions: single Spring Boot + PostgreSQL service; integer paise; race-free `INSERT … ON CONFLICT` for wallets; sorted `FOR UPDATE` + conditional debit; DB-unique idempotency in the same transaction as money movement; `PENDING` as in-TX claim only; Bearer token hash auth; Docker multi-stage/non-root; burst scripts for the three live gates; consistency-over-availability trade-off.
+I owned the architectural decisions: single Spring Boot + PostgreSQL service; integer paise; race-free `INSERT … ON CONFLICT` for wallets; sorted `FOR UPDATE` + conditional debit; DB-unique idempotency in the same transaction as money movement; `PENDING` as in-TX claim only; Bearer token hash auth; Docker multi-stage/non-root; manual concurrency and edge-case verification scripts; consistency-over-availability trade-off.
 
 I used AI assistance for implementation boilerplate, wiring Spring/Flyway/Actuator, drafting scripts/docs, debugging (Flyway checksums, logback blank line, contention script key reuse, FK lock ordering), and review.
 

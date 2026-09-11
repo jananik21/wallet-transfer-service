@@ -2,16 +2,38 @@
 
 Backend-only Spring Boot service for wallets and peer-to-peer transfers in **integer paise**. Built for concurrency correctness: race-free get-or-create, conservation of money, no overdraft, and DB-backed exactly-once idempotency.
 
+## Live demo
+
+| | |
+|---|---|
+| **Base URL** | https://wallet-transfer-service-production.up.railway.app |
+| **Health** | https://wallet-transfer-service-production.up.railway.app/actuator/health |
+| **Landing** | https://wallet-transfer-service-production.up.railway.app/ *(JSON index — no UI)* |
+| **Repo** | https://github.com/jananik21/wallet-transfer-service |
+
+```bash
+BASE=https://wallet-transfer-service-production.up.railway.app
+
+curl -s "$BASE/actuator/health"
+curl -s "$BASE/"
+curl -s -X POST "$BASE/wallets" -H 'Authorization: Bearer demo-user-1-token'
+curl -s -X POST "$BASE/wallets" -H 'Authorization: Bearer demo-user-2-token'
+```
+
+New wallets start at balance `0`. For a successful transfer, fund the source wallet in Postgres, then `POST /transfers` with a unique `idempotency_key`. Demo tokens: `demo-user-1-token`, `demo-user-2-token`, `demo-user-3-token`.
+
+Design notes: **[DESIGN.md](DESIGN.md)**. Concurrency / edge-case scripts: **[scripts/](scripts/)**.
+
 ## Architecture
 
 ```
 HTTP (Bearer token)
   → CorrelationIdFilter
-  → BearerTokenFilter (/wallets, /transfers)
-  → Controllers
-  → Services (WalletService / TransferService)
-  → MoneyMovementService (ledger primitive)
-  → JdbcTemplate + PostgreSQL
+    → BearerTokenFilter (/wallets, /transfers)
+    → Controllers
+    → Services (WalletService / TransferService)
+    → MoneyMovementService (ledger primitive)
+    → JdbcTemplate + PostgreSQL
 ```
 
 Observability: JSON logs (Logstash encoder), Micrometer → Prometheus, Actuator health.

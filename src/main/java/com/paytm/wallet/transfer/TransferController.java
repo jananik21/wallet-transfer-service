@@ -31,16 +31,14 @@ public class TransferController {
         AuthenticatedUser user = (AuthenticatedUser) httpRequest.getAttribute(BearerTokenFilter.USER_ATTR);
         TransferService.TransferApiResult result = transferService.create(user.userId(), request);
 
-        HttpStatus status;
-        if (result.replay()) {
-            status = HttpStatus.OK;
-        } else if (result.status() == TransferStatus.COMPLETED) {
-            status = HttpStatus.CREATED;
-        } else if (result.status() == TransferStatus.DECLINED_INSUFFICIENT_FUNDS) {
-            status = HttpStatus.UNPROCESSABLE_ENTITY;
-        } else {
-            status = HttpStatus.OK;
-        }
+        HttpStatus status = result.replay()
+                ? HttpStatus.OK
+                : switch (result.status()) {
+                    case COMPLETED -> HttpStatus.CREATED;
+                    case DECLINED_INSUFFICIENT_FUNDS -> HttpStatus.UNPROCESSABLE_ENTITY;
+                    case PENDING -> throw new IllegalStateException(
+                            "PENDING transfer must not escape the transaction boundary");
+                };
 
         return ResponseEntity.status(status).body(result.response());
     }
